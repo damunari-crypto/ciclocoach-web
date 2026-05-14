@@ -1,5 +1,6 @@
 import { generatePlan, workoutForDate } from '@/lib/trainingPlan'
 import { fetchFitnessData } from '@/lib/intervals'
+import { fetchOverrides, applyOverride } from '@/lib/overrides'
 import { WORKOUT_META } from '@/lib/types'
 import type { DailyWorkout } from '@/lib/types'
 import { formatDuration } from '@/lib/zones'
@@ -80,8 +81,11 @@ export default async function WorkoutPage({ params }: { params: Promise<{ date: 
   let ftp = FTP_DEFAULT
   try { const f = await fetchFitnessData(); ftp = f.current.eftp } catch {}
   const plan = generatePlan(ftp)
-  const workout = workoutForDate(plan, date)
-  if (!workout || workout.type === 'REST') return notFound()
+  const overrides = await fetchOverrides()
+  const rawWorkout = workoutForDate(plan, date)
+  if (!rawWorkout || rawWorkout.type === 'REST') return notFound()
+  const workout = applyOverride(rawWorkout, overrides)
+  if (workout.type === 'REST') return notFound()
 
   const meta = WORKOUT_META[workout.type]
   const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('it-IT', {

@@ -93,19 +93,23 @@ ${planContext}
 OVERRIDE ATTIVI:
 ${Object.keys(overrides.days).length === 0 ? 'Nessuno' : JSON.stringify(overrides.days, null, 2)}
 
-Quando rispondi, se vuoi modificare il piano per i prossimi giorni, includi ALLA FINE della risposta un blocco JSON così:
+REGOLA FONDAMENTALE: Se Davide ti chiede di cambiare, ridurre, saltare o modificare un allenamento, DEVI SEMPRE includere il blocco <plan_update> con le modifiche corrispondenti. Non limitarti a rispondere a parole — aggiorna effettivamente il piano.
+
+Quando modifichi il piano, includi ALLA FINE della risposta:
 <plan_update>
 {
-  "coachNote": "Nota breve per Davide visibile nella home",
+  "coachNote": "Nota breve visibile nella home (es: 'Oggi solo Z2 su richiesta')",
   "days": {
-    "2026-05-16": { "skip": true, "reason": "TSB troppo basso, recupero prioritario" },
-    "2026-05-17": { "type": "ENDURANCE", "durationMinutes": 60, "summaryOverride": "Z2 leggero 1h", "reason": "Compensazione giorno saltato" }
+    "${today}": { "type": "ENDURANCE", "summaryOverride": "Z2 leggero — modifica coach", "reason": "Richiesta dell'atleta" }
   }
 }
 </plan_update>
 
-Se non ci sono modifiche da fare, non includere il blocco <plan_update>.
-Rispondi sempre in italiano, in modo diretto e pratico. Max 3-4 frasi.`
+Tipi disponibili: REST, RECOVERY, ENDURANCE, TEMPO, SWEET_SPOT, THRESHOLD, VO2MAX
+Per saltare: usa "skip": true
+Per alleggerire: usa "type": "ENDURANCE" o "RECOVERY" con "summaryOverride"
+
+Rispondi sempre in italiano, in modo diretto. Max 3-4 frasi.`
 
   const messages: Anthropic.MessageParam[] = userMessage
     ? [{ role: 'user', content: userMessage }]

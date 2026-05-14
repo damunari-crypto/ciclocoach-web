@@ -1,5 +1,6 @@
 import { generatePlan, workoutForDate, currentWeek } from '@/lib/trainingPlan'
 import { fetchFitnessData } from '@/lib/intervals'
+import { fetchOverrides, applyOverride } from '@/lib/overrides'
 import { WORKOUT_META, PHASE_LABELS } from '@/lib/types'
 import { formatDuration, tsbColor, tsbLabel, computeZones } from '@/lib/zones'
 import Link from 'next/link'
@@ -34,7 +35,9 @@ export default async function HomePage() {
 
   const ftp  = fitness?.current.eftp ?? FTP_DEFAULT
   const plan = generatePlan(ftp)
-  const workout = workoutForDate(plan, today)
+  const overrides = await fetchOverrides()
+  const rawWorkout = workoutForDate(plan, today)
+  const workout = rawWorkout ? applyOverride(rawWorkout, overrides) : rawWorkout
   const week  = currentWeek(plan, today)
   const zones = computeZones(ftp)
 
