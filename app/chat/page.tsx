@@ -6,6 +6,8 @@ interface Message {
   role: 'user' | 'coach'
   text: string
   updated?: boolean
+  writeError?: string
+  hadPlanUpdate?: boolean
 }
 
 const QUICK_MESSAGES = [
@@ -47,6 +49,8 @@ export default function ChatPage() {
         role: 'coach',
         text: data.reply,
         updated: data.updated,
+        writeError: data.writeError,
+        hadPlanUpdate: data.hadPlanUpdate,
       }])
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'coach', text: 'Errore: ' + e.message }])
@@ -85,9 +89,15 @@ export default function ChatPage() {
             }}>
               {msg.text}
               {msg.updated && (
-                <div style={{ marginTop: 6, fontSize: 11, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  ✅ Piano aggiornato
+                <div style={{ marginTop: 6, fontSize: 11, opacity: 0.8 }}>✅ Piano aggiornato — ricarica la home</div>
+              )}
+              {msg.hadPlanUpdate && !msg.updated && msg.writeError && (
+                <div style={{ marginTop: 6, fontSize: 11, color: '#C05A5A', background: '#FDEAEA', borderRadius: 6, padding: '4px 8px' }}>
+                  ⚠️ Errore salvataggio: {msg.writeError}
                 </div>
+              )}
+              {msg.hadPlanUpdate && !msg.updated && !msg.writeError && (
+                <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>⚠️ Modifica piano non salvata</div>
               )}
             </div>
           </div>

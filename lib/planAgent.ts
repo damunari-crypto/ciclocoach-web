@@ -46,7 +46,7 @@ function buildPlanContext(ftp: number, overrides: PlanOverrides) {
   return upcoming.join('\n')
 }
 
-export async function runPlanAgent(userMessage?: string): Promise<{ reply: string; updated: boolean }> {
+export async function runPlanAgent(userMessage?: string): Promise<{ reply: string; updated: boolean; writeError: string | null; hadPlanUpdate: boolean }> {
   const [fitness, activities, overridesData] = await Promise.all([
     fetchFitnessData(4).catch(() => null),
     fetchRecentActivities(14).catch(() => []),
@@ -127,6 +127,7 @@ Rispondi sempre in italiano, in modo diretto. Max 3-4 frasi.`
   // Extract plan_update if present
   const match = text.match(/<plan_update>([\s\S]*?)<\/plan_update>/)
   let updated = false
+  let writeError: string | undefined
 
   if (match) {
     try {
@@ -136,13 +137,15 @@ Rispondi sempre in italiano, in modo diretto. Max 3-4 frasi.`
         coachNote: update.coachNote ?? overrides.coachNote,
         days: { ...overrides.days, ...update.days },
       }
+      if (!sha) throw new Error('SHA mancante — GITHUB_TOKEN non configurato o file non leggibile')
       await writeJsonFile('data/overrides.json', newOverrides, sha, `Coach update ${today}`)
       updated = true
-    } catch (e) {
-      console.error('Failed to parse plan_update:', e)
+    } catch (e: any) {
+      console.error('Failed to write plan_update:', e)
+      writeError = e.message
     }
   }
 
   const reply = text.replace(/<plan_update>[\s\S]*?<\/plan_update>/, '').trim()
-  return { reply, updated }
+  return { reply, updated, writeError: writeError ?? null, hadPlanUpdate: !!match }
 }
