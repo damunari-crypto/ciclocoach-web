@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface Message {
   role: 'user' | 'coach'
@@ -19,6 +20,7 @@ const QUICK_MESSAGES = [
 ]
 
 export default function ChatPage() {
+  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([
     { role: 'coach', text: 'Ciao Davide! Sono il tuo coach AI. Puoi dirmi se hai saltato un allenamento, se hai impegni nei prossimi giorni, o chiedermi un\'analisi della tua settimana.' }
   ])
@@ -52,6 +54,9 @@ export default function ChatPage() {
         writeError: data.writeError,
         hadPlanUpdate: data.hadPlanUpdate,
       }])
+      if (data.updated) {
+        setTimeout(() => router.refresh(), 500)
+      }
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'coach', text: 'Errore: ' + e.message }])
     } finally {
