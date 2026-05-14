@@ -29,8 +29,6 @@ export async function loadOverrides(): Promise<PlanOverrides> {
 function buildPlanContext(ftp: number, overrides: PlanOverrides) {
   const plan = generatePlan(ftp)
   const today = new Date().toISOString().split('T')[0]
-
-  // Next 14 days of planned workouts
   const upcoming: string[] = []
   for (let i = -3; i <= 14; i++) {
     const d = new Date(); d.setDate(d.getDate() + i)
@@ -46,7 +44,39 @@ function buildPlanContext(ftp: number, overrides: PlanOverrides) {
   return upcoming.join('\n')
 }
 
-export async function runPlanAgent(userMessage?: string): Promise<{ reply: string; updated: boolean; writeError: string | null; hadPlanUpdate: boolean }> {
+// Tool definition for structured plan updates
+const UPDATE_PLAN_TOOL: Anthropic.Tool = {
+  name: 'update_plan',
+  description: 'Modifica il piano di allenamento per uno o più giorni. Chiamare questo tool ogni volta che Davide chiede di cambiare, ridurre, saltare o modificare un allenamento.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      coachNote: {
+        type: 'string',
+        description: 'Nota breve visibile nella home app (es: "Oggi solo Z2 su tua richiesta")',
+      },
+      days: {
+        type: 'object',
+        description: 'Chiavi = date ISO (YYYY-MM-DD), valori = modifiche al giorno',
+        additionalProperties: {
+          type: 'object',
+          properties: {
+            skip:            { type: 'boolean', description: 'true = salta completamente (diventa REST)' },
+            type:            { type: 'string', enum: ['REST','RECOVERY','ENDURANCE','TEMPO','SWEET_SPOT','THRESHOLD','VO2MAX'] },
+            durationMinutes: { type: 'number', description: 'Durata in minuti' },
+            summaryOverride: { type: 'string', description: 'Descrizione breve del workout modificato' },
+            reason:          { type: 'string', description: 'Motivazione della modifica' },
+          },
+        },
+      },
+    },
+    required: ['coachNote', 'days'],
+  },
+}
+
+export async function runPlanAgent(userMessage?: string): Promise<{
+  reply: string; updated: boolean; writeError: string | null; hadPlanUpdate: boolean
+}> {
   const [fitness, activities, overridesData] = await Promise.all([
     fetchFitnessData(4).catch(() => null),
     fetchRecentActivities(14).catch(() => []),
@@ -56,6 +86,7 @@ export async function runPlanAgent(userMessage?: string): Promise<{ reply: strin
   const overrides: PlanOverrides = overridesData.json
   const sha: string = overridesData.sha
   const ftp = fitness?.current.eftp ?? 252
+  const today = new Date().toISOString().split('T')[0]
 
   const planContext = buildPlanContext(ftp, overrides)
 
@@ -69,83 +100,80 @@ export async function runPlanAgent(userMessage?: string): Promise<{ reply: strin
     ? `CTL=${fitness.current.ctl.toFixed(1)}, ATL=${fitness.current.atl.toFixed(1)}, TSB=${fitness.current.tsb.toFixed(1)}, eFTP=${ftp}W`
     : 'Dati fitness non disponibili.'
 
-  const today = new Date().toISOString().split('T')[0]
-
   const systemPrompt = `Sei il coach personale di ciclismo di Davide Munari.
-Davide, 51 anni, 85kg, ha un'ernia discale L5-S1 (attenzione ai carichi lombari), FTP attuale ${ftp}W.
-Obiettivo: gran fondo montagna il 15 luglio 2026. Oggi: ${today}.
+Davide, 51 anni, 85kg, ernia discale L5-S1, FTP ${ftp}W. Obiettivo: gran fondo montagna 15 luglio 2026. Oggi: ${today}.
 
-Il tuo ruolo è:
-1. Analizzare i dati reali da Intervals.icu vs il piano previsto
-2. Identificare allenamenti saltati, ridotti, o fatti diversamente
-3. Adattare il piano dei prossimi giorni in modo intelligente
-4. Rispondere ai messaggi di Davide con consigli pratici
+STATO FITNESS: ${fitnessText}
 
-STATO FITNESS ATTUALE:
-${fitnessText}
-
-ATTIVITÀ RECENTI (reali da Intervals.icu):
+ATTIVITÀ RECENTI:
 ${activitiesText}
 
-PIANO PREVISTO (prossimi giorni):
+PIANO PROSSIMI GIORNI:
 ${planContext}
 
-OVERRIDE ATTIVI:
-${Object.keys(overrides.days).length === 0 ? 'Nessuno' : JSON.stringify(overrides.days, null, 2)}
+OVERRIDE ATTIVI: ${Object.keys(overrides.days).length === 0 ? 'Nessuno' : JSON.stringify(overrides.days)}
 
-REGOLA FONDAMENTALE: Se Davide ti chiede di cambiare, ridurre, saltare o modificare un allenamento, DEVI SEMPRE includere il blocco <plan_update> con le modifiche corrispondenti. Non limitarti a rispondere a parole — aggiorna effettivamente il piano.
+Quando Davide chiede di modificare, ridurre, saltare o cambiare un allenamento, usa SEMPRE il tool update_plan.
+Rispondi in italiano, max 3-4 frasi, tono diretto e pratico.`
 
-Quando modifichi il piano, includi ALLA FINE della risposta:
-<plan_update>
-{
-  "coachNote": "Nota breve visibile nella home (es: 'Oggi solo Z2 su richiesta')",
-  "days": {
-    "${today}": { "type": "ENDURANCE", "summaryOverride": "Z2 leggero — modifica coach", "reason": "Richiesta dell'atleta" }
-  }
-}
-</plan_update>
+  const messages: Anthropic.MessageParam[] = [{
+    role: 'user',
+    content: userMessage ?? 'Analizza il piano della settimana e suggerisci aggiustamenti in base alle attività recenti e allo stato di forma.',
+  }]
 
-Tipi disponibili: REST, RECOVERY, ENDURANCE, TEMPO, SWEET_SPOT, THRESHOLD, VO2MAX
-Per saltare: usa "skip": true
-Per alleggerire: usa "type": "ENDURANCE" o "RECOVERY" con "summaryOverride"
-
-Rispondi sempre in italiano, in modo diretto. Max 3-4 frasi.`
-
-  const messages: Anthropic.MessageParam[] = userMessage
-    ? [{ role: 'user', content: userMessage }]
-    : [{ role: 'user', content: 'Analizza il piano della settimana e suggerisci eventuali aggiustamenti in base alle attività recenti e allo stato di forma attuale.' }]
-
+  // First call: allow tool use
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system: systemPrompt,
+    tools: [UPDATE_PLAN_TOOL],
     messages,
   })
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+  // Extract text and tool use blocks
+  let reply = ''
+  let toolInput: any = null
 
-  // Extract plan_update if present
-  const match = text.match(/<plan_update>([\s\S]*?)<\/plan_update>/)
+  for (const block of response.content) {
+    if (block.type === 'text') reply += block.text
+    if (block.type === 'tool_use' && block.name === 'update_plan') toolInput = block.input
+  }
+
+  // If tool was called, get the follow-up text response
+  if (toolInput && response.stop_reason === 'tool_use') {
+    const followUp = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      system: systemPrompt,
+      tools: [UPDATE_PLAN_TOOL],
+      messages: [
+        ...messages,
+        { role: 'assistant', content: response.content },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: (response.content.find(b => b.type === 'tool_use') as any).id, content: 'Piano aggiornato con successo.' }] },
+      ],
+    })
+    reply = followUp.content.filter(b => b.type === 'text').map(b => (b as any).text).join('')
+  }
+
+  // Write to GitHub if tool was called
   let updated = false
-  let writeError: string | undefined
+  let writeError: string | null = null
 
-  if (match) {
+  if (toolInput) {
     try {
-      const update = JSON.parse(match[1].trim())
+      if (!sha) throw new Error('GITHUB_TOKEN non configurato o file non leggibile')
       const newOverrides: PlanOverrides = {
         lastUpdated: today,
-        coachNote: update.coachNote ?? overrides.coachNote,
-        days: { ...overrides.days, ...update.days },
+        coachNote: toolInput.coachNote ?? overrides.coachNote,
+        days: { ...overrides.days, ...toolInput.days },
       }
-      if (!sha) throw new Error('SHA mancante — GITHUB_TOKEN non configurato o file non leggibile')
       await writeJsonFile('data/overrides.json', newOverrides, sha, `Coach update ${today}`)
       updated = true
     } catch (e: any) {
-      console.error('Failed to write plan_update:', e)
+      console.error('Failed to write plan update:', e)
       writeError = e.message
     }
   }
 
-  const reply = text.replace(/<plan_update>[\s\S]*?<\/plan_update>/, '').trim()
-  return { reply, updated, writeError: writeError ?? null, hadPlanUpdate: !!match }
+  return { reply: reply.trim(), updated, writeError, hadPlanUpdate: !!toolInput }
 }
