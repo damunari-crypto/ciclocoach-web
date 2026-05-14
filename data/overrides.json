@@ -1,5 +1,12 @@
 {
   "lastUpdated": "2026-05-14",
-  "coachNote": null,
-  "days": {}
+  "coachNote": "Oggi solo Z2 su richiesta di Davide",
+  "days": {
+    "2026-05-14": {
+      "type": "ENDURANCE",
+      "durationMinutes": 75,
+      "summaryOverride": "Solo Z2 — pedalata aerobica leggera",
+      "reason": "Davide ha chiesto di abbassare l'intensità, niente Tempo oggi"
+    }
+  }
 }
