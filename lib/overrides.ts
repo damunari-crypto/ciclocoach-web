@@ -6,7 +6,7 @@ const RAW_URL = 'https://raw.githubusercontent.com/damunari-crypto/ciclocoach-we
 
 export async function fetchOverrides(): Promise<PlanOverrides> {
   try {
-    const res = await fetch(RAW_URL, { next: { revalidate: 60 } })
+    const res = await fetch(RAW_URL, { cache: 'no-store' })
     if (!res.ok) return { lastUpdated: '', coachNote: null, days: {} }
     return await res.json()
   } catch {
