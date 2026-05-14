@@ -12,9 +12,14 @@ function githubHeaders() {
 }
 
 export async function readJsonFile(path: string): Promise<any> {
+  const token = process.env.GITHUB_TOKEN
+  if (!token) throw new Error('GITHUB_TOKEN non impostato in Vercel')
   const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`
   const res = await fetch(url, { headers: githubHeaders(), cache: 'no-store' })
-  if (!res.ok) throw new Error(`GitHub read error: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`GitHub read ${res.status}: ${body.slice(0, 120)}`)
+  }
   const data = await res.json()
   const content = Buffer.from(data.content, 'base64').toString('utf-8')
   return { json: JSON.parse(content), sha: data.sha }
