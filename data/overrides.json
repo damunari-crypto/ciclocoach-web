@@ -1,12 +1,17 @@
 {
-  "lastUpdated": "2026-05-14",
-  "coachNote": "Oggi solo Z2 su richiesta di Davide",
+  "lastUpdated": "2026-05-18",
+  "coachNote": "Oggi palestra leggera per Davide, niente bici come da piano",
   "days": {
     "2026-05-14": {
       "type": "ENDURANCE",
       "durationMinutes": 75,
       "summaryOverride": "Solo Z2 — pedalata aerobica leggera",
       "reason": "Davide ha chiesto di abbassare l'intensità, niente Tempo oggi"
+    },
+    "2026-05-18": {
+      "type": "REST",
+      "summaryOverride": "Palestra leggera — core, mobilità e rinforzo muscolare",
+      "reason": "Davide fa palestra leggera oggi, giorno REST confermato"
     }
   }
 }
